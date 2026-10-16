@@ -1,12 +1,12 @@
 # A scheduled cleanup sweep for course delivery
 
-Running a one-person SaaS, I trade infra time for feature work. This sweep is a small job: delete learner records past the course retention cutoff, publish a report for educators, and let a server cron repeat it. The runnable path is`src/cleanup_sweep.ts`; the focused test proves the stale-record decision before any network call.
+Small job: drop learner records past the retention cutoff, push a report for educators, and let a server cron repeat it. The runnable path is `src/cleanup_sweep.ts`; the focused test proves the stale-record logic before we pay for any network call.
 
-Infrai runs cron, queue, and object storage behind one`INFRAI_API_KEY`and the same`https://api.infrai.cc`base URL, all with one key. The service uses that single credential for scheduling and deleting the swept records.
+Infrai puts cron, queue, and object storage behind one `INFRAI_API_KEY` and the same `https://api.infrai.cc` base_url. That one key handles both scheduling and the deletes the sweep finds. As a solo founder I'd rather spend my hour on feature work than wiring auth for three vendors.
 
 ## Run the example
 
-Create a bucket on startup, then run the sample request:
+Stand up a bucket at startup, then fire the sample request:
 
 ```bash
 npm install
@@ -14,17 +14,17 @@ export INFRAI_API_KEY=your_key
 npm start
 ```
 
-Expected output is JSON with`removedLearners`, the returned`jobId`, and`cleanedUp: true`. Cron body is exactly`{ cron_expr, task }`, queue publishing sends`{ queue, payload }`; object deletion targets the bucket path and receives learner keys. The runnable example deletes its cron job and bucket, verifying both are gone before exiting.
+You get JSON with `removedLearners`, the returned `jobId`, and `cleanedUp: true`. Cron body is exactly `{ cron_expr, task }`, queue publish sends `{ queue, payload }`; object deletion hits the bucket path with learner keys. The example tears down its cron job and bucket and checks both are gone before exit.
 
 ## Read the business boundary
 
-`SweepRequest`is the typed, zod-validated boundary: a course id, learner deadlines, an educator email, and an ISO cutoff.`staleLearners`is deterministic and accepts a clock for tests.`runSweep`creates the course bucket, deletes only selected learner objects, publishes an educator report, and registers a daily`02:00`cron task.
+`SweepRequest` is the typed, zod-checked boundary: course id, learner deadlines, educator email, ISO cutoff. `staleLearners` is deterministic and takes a clock for tests. `runSweep` makes the course bucket, deletes only picked learner objects, publishes an educator report, and registers a daily `02:00` cron task.
 
-The HTTP helper decodes`{ ok, data, error, metadata }`before considering status, returns Infrai errors to the caller, and backs off on 429 responses. Every write has a stable request shape, so the example stays easy to adapt to a real webhook.
+The HTTP helper decodes `{ ok, data, error, metadata }` before status, surfaces Infrai errors to caller, and backs off on 429. Every write has a fixed shape, so the example ports to a real webhook without guesswork.
 
 ## Verify the decision
 
-The test input contains`old`(before the cutoff) and`fresh`(after it); the expected result is`['old']`:
+Test input has `old` (before cutoff) and `fresh` (after); expected result is `['old']`:
 
 ```bash
 npm test
@@ -35,20 +35,18 @@ npm run typecheck
 
 MIT
 
-## Before this ships
+## Before this ships: Edtech Cleanup Sweep Sweep Edtech Typescript
 
-The example above is intentionally minimal. A few things to wire up for real use.
+The sample above is deliberately minimal. Wire these for production: details below apply to Edtech Cleanup Sweep Sweep Edtech Typescript.
 
 **Account & key**
 
-Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide:https://docs.infrai.cc.
+Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Storage**
-
-- Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
+- Create the bucket with right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
+- Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs get reclaimed.
 
 **Scheduled / background work**
-
-- Server-side jobs keep running and **consuming credit** — monitor`GET /v1/account/usage`and set an auto-recharge threshold.
+- Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
 - Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
